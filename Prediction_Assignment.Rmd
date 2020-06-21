@@ -1,0 +1,171 @@
+---
+title: "Prediction Assignment"
+author: "Guneet Kalsi"
+date: "20/06/2020"
+output: html_document
+---
+
+# Introduction
+This report is for Coursera Practical Machine Learning Course’s Final Project.
+The data is from this source: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har
+
+Basically the data is collected from sensor device such as Jawbone Up, Nike FuelBand, and Fitbit which are attached on belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+The objective of this project is to predict the manner in which the participants did the exercise. The variable which I am predicting is called “classe”.
+Our outcome variable “classe” is a factor variable with 5 levels. For this dataset, “participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in 5 different fashions:
+
+- exactly according to the specification (Class A)
+
+- throwing the elbows to the front (Class B)
+
+- lifting the dumbbell only halfway (Class C)
+
+- lowering the dumbbell only halfway (Class D)
+
+- throwing the hips to the front (Class E)
+
+The report will touch on how the model is built, cross validation, out of sample error and predict the outcome for 20 different test subjects.
+
+# Load Dataset
+
+```{r, echo=TRUE}
+train <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", header=TRUE, stringsAsFactors = TRUE, na.strings = c("","NA"))
+test <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", header=TRUE, stringsAsFactors = TRUE, na.strings = c("","NA"))
+```
+
+# Data Exploration
+
+```{r, echo=TRUE}
+library(caret)
+library(rattle)
+library(randomForest)
+library(MASS)
+library(ggplot2)
+library(e1071)
+library(gbm)
+summary(train)
+head(train)
+summary(test)
+head(test)
+```
+
+# Data Cleaning
+
+```{r, echo=TRUE}
+train2 <- train[ , apply(train, 2, function(x) !any(is.na(x)))]
+train2 <- train2[,8:60]
+```
+
+Separate data the train data into 60% for training the model and 40% for testing the model. The model with the lowest MSE and highest AUC will be used to predict the final outcome for the 20 different test subjects.
+
+```{r, echo=TRUE}
+IndexTrain <- createDataPartition(y=train2$classe, p=0.6, list=FALSE)
+training <- train2[IndexTrain,]
+testing <- train2[-IndexTrain,]
+```
+
+# Model Building
+
+## Decision Tree
+
+Using the train function in the caret package, we set method=“rpart” and train the Decision Tree model with the training data.
+
+```{r, echo=TRUE}
+tree1 <- train(classe~., method="rpart", data=training)
+tree1$finalModel
+fancyRpartPlot(tree1$finalModel, tweak=1.5)
+tree.pred <- predict(tree1, newdata = testing)
+tree.confuse <- confusionMatrix(tree.pred, testing$classe)
+tree.confuse
+```
+
+Based on the confusion Matrix, we can see the accuracy for Decision Tree Model is 0.5497069.
+
+## Random Forest
+
+For Random Forest model, manual tuning was done to find the optimal mtry which will be used to train the final model. The optimal mtry will have the lowest out-of-bag error.
+
+```{r, echo=TRUE}
+mse.rfs <- rep(0, 13)
+for(m in 1:13){
+    set.seed(123)
+    rf <- randomForest(classe ~ ., data=training, mtry=m)
+    mse.rfs[m] <- rf$err.rate[500]  
+}
+plot(1:13, mse.rfs, type="b", xlab="mtry", ylab="OOB Error")
+mse.rfs
+optimal.mtry <- which.min(mse.rfs)
+rf1 <- randomForest(classe~., data=training, mtry=optimal.mtry)
+rf1
+rf.pred <- predict(rf1, newdata = testing)
+rf.confuse <- confusionMatrix(rf.pred, testing$classe)
+rf.confuse
+```
+
+Based on the confusion Matrix, we can see the accuracy for Random Forest Model is 0.9929901.
+
+## Gradient Boosting Model
+
+For Gradient Boosting Model, train function in the caret package waas used and set method=“gbm”. Verbose=FALSE is to surpress all the messages.
+
+```{r, echo=TRUE}
+gbm <- train(classe~., method="gbm", data=training, verbose=FALSE)
+gbm$finalModel
+gbm.pred <- predict(gbm, newdata = testing)
+gbm.confuse <- confusionMatrix(gbm.pred, testing$classe)
+gbm.confuse
+```
+
+Based on the confusion Matrix, we can see the accuracy for Gradient Boosting Model is 0.9611267.
+
+# Model Selection
+
+Based on the summary table below, we can see the model with best accuracy is the Random Forest Model. This model will be used to predict the final class for the 20 subjects in the test data.
+
+```{r, echo=TRUE}
+table1 <- data.frame(
+Model=c("Random Forest","Gradient Boosting", "Decision Tree"),
+Accuracy=c(rf.confuse$overall[[1]],gbm.confuse$overall[[1]],tree.confuse$overall[[1]]),
+"ConfInv 95 Lower"=c(rf.confuse$overall[[3]],gbm.confuse$overall[[3]],tree.confuse$overall[[3]]),
+"ConfInv 95 Upper"=c(rf.confuse$overall[[4]],gbm.confuse$overall[[4]],tree.confuse$overall[[4]])
+ )
+table1
+```
+
+# Test Data Prediction
+
+Applying the trained model from Random Forest, we can get the predicted class as shown below.
+
+```{r, echo=TRUE}
+predictfinal <- predict(rf1, newdata=test, type="class")
+predictfinal
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
